@@ -67,13 +67,6 @@ var backoffDuration = [...]time.Duration{
 	time.Second,
 	5 * time.Second,
 	30 * time.Second,
-	2 * time.Minute,
-	5 * time.Minute,
-	15 * time.Minute,
-	30 * time.Minute,
-	1 * time.Hour,
-	2 * time.Hour,
-	6 * time.Hour,
 }
 
 // DecompressAndVerifyWithFallback decompresses the given data and verifies the data integrity.
@@ -95,7 +88,6 @@ func DecompressAndVerifyWithFallback(bsDriver BackupStoreDriver, blkFile, decomp
 
 		r, err := util.DecompressAndVerify(decompression, rc, checksum)
 		if err == nil {
-			defer func() { _ = rc.Close() }()
 			return r, nil
 		}
 
@@ -106,20 +98,16 @@ func DecompressAndVerifyWithFallback(bsDriver BackupStoreDriver, blkFile, decomp
 			alternativeDecompression = "gzip"
 		}
 
-		_ = rc.Close()
-
 		if alternativeDecompression != "" {
-			retriedRc, err2 := bsDriver.Read(blkFile)
-			if err2 != nil {
-				lastErr = err2
+			rcAlt, errAlt := bsDriver.Read(blkFile)
+			if errAlt != nil {
+				lastErr = errAlt
 			} else {
-				r, err2 = util.DecompressAndVerify(alternativeDecompression, retriedRc, checksum)
-				if err2 == nil {
-					defer func() { _ = retriedRc.Close() }()
-					return r, nil
+				rAlt, errAlt := util.DecompressAndVerify(alternativeDecompression, rcAlt, checksum)
+				if errAlt == nil {
+					return rAlt, nil
 				}
-				lastErr = errors.Wrapf(err2, "fallback decompression also failed for block %v", blkFile)
-				_ = retriedRc.Close()
+				lastErr = errors.Wrapf(errAlt, "fallback decompression also failed for block %v", blkFile)
 			}
 		} else {
 			lastErr = errors.Wrapf(err, "decompression verification failed for block %v", blkFile)
